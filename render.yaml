@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: github-analyzer
+    runtime: static
+    staticPublishPath: .
+    buildCommand: ""
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+ 
