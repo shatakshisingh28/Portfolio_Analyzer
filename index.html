@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GitLens — GitHub Portfolio Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #080c10;
+    --bg2: #0d1117;
+    --bg3: #161b22;
+    --bg4: #21262d;
+    --border: #30363d;
+    --border2: #3d444d;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --text3: #484f58;
+    --accent: #39d353;
+    --accent2: #1f6feb;
+    --accent3: #f78166;
+    --accent4: #d2a8ff;
+    --warn: #e3b341;
+    --font-display: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ── CURSOR ── */
+  body { cursor: none; }
+  #cursor {
+    width: 12px; height: 12px;
+    background: var(--accent);
+    border-radius: 50%;
+    position: fixed; top: 0; left: 0;
+    pointer-events: none;
+    z-index: 9999;
+    transition: transform 0.1s, background 0.2s;
+    mix-blend-mode: screen;
+  }
+  #cursor.big { transform: scale(4); background: rgba(57,211,83,0.3); }
+
+  /* ── NOISE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.4;
+  }
+
+  /* ── SCANLINES ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 60px;
+    border-bottom: 1px solid transparent;
+    transition: background 0.3s, border-color 0.3s;
+  }
+  nav.scrolled { background: rgba(8,12,16,0.92); border-color: var(--border); backdrop-filter: blur(12px); }
+  .nav-logo { font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); text-decoration: none; }
+  .nav-logo span { color: var(--accent); }
+  .nav-links { display: flex; align-items: center; gap: 32px; }
+  .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; letter-spacing: 0.05em; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--accent); }
+  .nav-btn {
+    background: var(--accent); color: #000; border: none;
+    padding: 8px 20px; font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    cursor: none; transition: transform 0.15s, box-shadow 0.2s;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+  .nav-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(57,211,83,0.3); }
+
+  /* ── HERO ── */
+  #hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 120px 60px 80px;
+    position: relative;
+    z-index: 1;
+  }
+  .hero-tag {
+    font-size: 12px; letter-spacing: 0.15em; color: var(--accent);
+    margin-bottom: 24px;
+    opacity: 0; animation: fadeUp 0.6s 0.2s forwards;
+  }
+  .hero-tag::before { content: '// '; color: var(--text3); }
+  h1.hero-title {
+    font-family: var(--font-display);
+    font-size: clamp(52px, 8vw, 96px);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    margin-bottom: 32px;
+    opacity: 0; animation: fadeUp 0.7s 0.4s forwards;
+  }
+  h1.hero-title .line2 { color: var(--accent); }
+  h1.hero-title .line3 { -webkit-text-stroke: 1px var(--border2); color: transparent; }
+  .hero-sub {
+    max-width: 520px;
+    color: var(--text2);
+    font-size: 15px; line-height: 1.7;
+    margin-bottom: 48px;
+    opacity: 0; animation: fadeUp 0.7s 0.6s forwards;
+  }
+  .hero-search {
+    display: flex; gap: 0;
+    max-width: 560px;
+    opacity: 0; animation: fadeUp 0.7s 0.8s forwards;
+  }
+  .hero-prefix {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-right: none; padding: 14px 16px;
+    color: var(--accent); font-family: var(--font-mono); font-size: 14px;
+    white-space: nowrap;
+  }
+  .hero-input {
+    flex: 1; background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--font-mono); font-size: 14px;
+    padding: 14px 16px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .hero-input:focus { border-color: var(--accent); }
+  .hero-input::placeholder { color: var(--text3); }
+  .hero-go {
+    background: var(--accent); border: 1px solid var(--accent);
+    color: #000; font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    padding: 14px 28px; cursor: none; white-space: nowrap;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .hero-go:hover { background: #4bff6b; box-shadow: 0 0 32px rgba(57,211,83,0.4); }
+  .hero-samples {
+    margin-top: 16px;
+    display: flex; gap: 8px; flex-wrap: wrap;
+    opacity: 0; animation: fadeUp 0.7s 1s forwards;
+  }
+  .sample-btn {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text3);
+    background: none; border: 1px solid var(--border); padding: 4px 12px;
+    cursor: none; transition: all 0.2s;
+  }
+  .sample-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(57,211,83,0.05); }
+  .hero-stats {
+    position: absolute; right: 60px; top: 50%;
+    transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 24px;
+    opacity: 0; animation: fadeLeft 0.8s 1s forwards;
+  }
+  .hero-stat { text-align: right; }
+  .hero-stat .n { font-family: var(--font-display); font-size: 36px; font-weight: 700; color: var(--text); }
+  .hero-stat .l { font-size: 11px; letter-spacing: 0.1em; color: var(--text3); }
+  .grid-bg {
+    position: absolute; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.12;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black, transparent);
+  }
+  .glow-orb {
+    position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none;
+  }
+  .orb1 { width: 400px; height: 400px; background: rgba(57,211,83,0.08); top: 10%; left: -100px; }
+  .orb2 { width: 300px; height: 300px; background: rgba(31,111,235,0.06); bottom: 10%; right: 10%; }
+
+  /* ── TERMINAL WINDOW ── */
+  .terminal {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden;
+    margin-top: 60px;
+    opacity: 0; animation: fadeUp 0.7s 1.2s forwards;
+    max-width: 560px;
+  }
+  .term-bar {
+    background: var(--bg3); padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .term-title { font-size: 12px; color: var(--text3); margin-left: 8px; }
+  .term-body { padding: 16px; font-size: 12px; line-height: 1.8; }
+  .term-line { display: flex; gap: 8px; }
+  .term-prompt { color: var(--accent); }
+  .term-cmd { color: var(--text); }
+  .term-out { color: var(--text2); padding-left: 16px; }
+  .term-key { color: var(--accent4); }
+  .term-val { color: var(--warn); }
+  .term-good { color: var(--accent); }
+  .term-cursor { display: inline-block; width: 8px; height: 14px; background: var(--accent); animation: blink 1s step-end infinite; vertical-align: middle; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── FEATURES ── */
+  #features {
+    padding: 100px 60px;
+    position: relative; z-index: 1;
+  }
+  .section-label {
+    font-size: 11px; letter-spacing: 0.2em; color: var(--accent);
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); max-width: 80px; }
+  h2.section-title {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 52px); font-weight: 700;
+    letter-spacing: -0.02em; margin-bottom: 60px; color: var(--text);
+    max-width: 600px;
+  }
+  h2.section-title em { font-style: normal; color: var(--accent); }
+  .features-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+  .feature {
+    background: var(--bg); padding: 36px 32px;
+    transition: background 0.2s;
+    position: relative; overflow: hidden;
+  }
+  .feature:hover { background: var(--bg2); }
+  .feature-num {
+    font-size: 11px; color: var(--text3); letter-spacing: 0.1em;
+    margin-bottom: 20px; font-family: var(--font-mono);
+  }
+  .feature-icon {
+    width: 40px; height: 40px; margin-bottom: 20px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .feature-icon svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.5; }
+  .feature h3 { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+  .feature p { color: var(--text2); font-size: 13px; line-height: 1.7; }
+  .feature-line { position: absolute; left: 0; top: 0; width: 3px; height: 0; background: var(--accent); transition: height 0.4s; }
+  .feature:hover .feature-line { height: 100%; }
+
+  /* ── ANALYZER SECTION ── */
+  #analyzer {
+    padding: 80px 60px 120px;
+    position: relative; z-index: 1;
+  }
+  .analyzer-wrap {
+    background: var(--bg2); border: 1px solid var(--border);
+    padding: 48px;
+  }
+  .analyzer-header { margin-bottom: 36px; }
+  .input-row {
+    display: flex; gap: 0; margin-bottom: 12px;
+  }
+  .input-prefix {
+    background: var(--bg3); border: 1px solid var(--border2); border-right: none;
+    padding: 12px 16px; color: var(--accent); font-family: var(--font-mono); font-size: 13px;
+    white-space: nowrap; align-self: stretch; display: flex; align-items: center;
+  }
+  #mainInput {
+    flex: 1; background: var(--bg); border: 1px solid var(--border2);
+    color: var(--text); font-family: var(--font-mono); font-size: 14px;
+    padding: 12px 16px; outline: none; transition: border-color 0.2s;
+  }
+  #mainInput:focus { border-color: var(--accent); }
+  #mainInput::placeholder { color: var(--text3); }
+  #analyzeBtn {
+    background: var(--accent); color: #000;
+    border: 1px solid var(--accent); font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    padding: 12px 28px; cursor: none; transition: all 0.2s;
+  }
+  #analyzeBtn:hover:not(:disabled) { background: #4bff6b; box-shadow: 0 0 24px rgba(57,211,83,0.4); }
+  #analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .token-row {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 32px;
+  }
+  .token-label { font-size: 11px; letter-spacing: 0.08em; color: var(--text3); white-space: nowrap; }
+  #tokenInput {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text2); font-family: var(--font-mono); font-size: 12px;
+    padding: 8px 12px; outline: none; transition: border-color 0.2s;
+  }
+  #tokenInput:focus { border-color: var(--border2); }
+  #tokenInput::placeholder { color: var(--text3); }
+
+  /* Results */
+  #results { display: none; }
+  .error-msg {
+    background: rgba(247,129,102,0.08); border: 1px solid var(--accent3);
+    padding: 14px 20px; color: var(--accent3); font-size: 13px;
+    margin-bottom: 24px;
+  }
+  .loading-bar {
+    display: none; margin-bottom: 32px;
+  }
+  .loading-bar.active { display: block; }
+  .lb-label { font-size: 12px; color: var(--accent); margin-bottom: 8px; letter-spacing: 0.05em; }
+  .lb-track { height: 3px; background: var(--bg3); position: relative; overflow: hidden; }
+  .lb-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.4s; }
+  .lb-scanner { position: absolute; top: 0; height: 100%; width: 60px; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scan 1.5s linear infinite; }
+  @keyframes scan { from { left: -60px; } to { left: 100%; } }
+
+  .profile-block {
+    display: flex; gap: 24px; align-items: flex-start;
+    padding: 24px 0; border-bottom: 1px solid var(--border); margin-bottom: 32px;
+  }
+  .p-avatar { width: 72px; height: 72px; border-radius: 4px; border: 2px solid var(--border2); flex-shrink: 0; }
+  .p-name { font-family: var(--font-display); font-size: 22px; font-weight: 700; }
+  .p-login { color: var(--accent); font-size: 13px; margin: 2px 0 8px; }
+  .p-bio { color: var(--text2); font-size: 13px; margin-bottom: 10px; }
+  .p-meta { display: flex; gap: 20px; flex-wrap: wrap; }
+  .p-meta span { font-size: 12px; color: var(--text3); }
+  .p-meta strong { color: var(--text); font-weight: 500; }
+  .p-link { font-size: 12px; color: var(--accent2); text-decoration: none; }
+  .p-link:hover { text-decoration: underline; }
+
+  .metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 32px; }
+  .met {
+    background: var(--bg3); border: 1px solid var(--border);
+    padding: 20px 16px; position: relative; overflow: hidden;
+  }
+  .met::after { content: ''; position: absolute; bottom: 0; left: 0; height: 3px; width: 100%; }
+  .met.m1::after { background: var(--accent); }
+  .met.m2::after { background: var(--accent2); }
+  .met.m3::after { background: var(--accent4); }
+  .met.m4::after { background: var(--warn); }
+  .met-val { font-family: var(--font-display); font-size: 28px; font-weight: 700; }
+  .met-label { font-size: 11px; color: var(--text3); letter-spacing: 0.08em; margin-top: 4px; text-transform: uppercase; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .panel { background: var(--bg3); border: 1px solid var(--border); padding: 24px; }
+  .panel-title { font-size: 11px; letter-spacing: 0.12em; color: var(--accent); margin-bottom: 20px; text-transform: uppercase; }
+
+  /* Score */
+  .score-display { display: flex; align-items: baseline; gap: 8px; margin-bottom: 24px; }
+  .score-num { font-family: var(--font-display); font-size: 56px; font-weight: 700; line-height: 1; }
+  .score-denom { font-size: 20px; color: var(--text3); }
+  .score-grade { font-size: 12px; padding: 4px 10px; font-weight: 500; }
+  .grade-S { background: rgba(57,211,83,0.15); color: var(--accent); border: 1px solid rgba(57,211,83,0.3); }
+  .grade-A { background: rgba(31,111,235,0.15); color: #79c0ff; border: 1px solid rgba(31,111,235,0.3); }
+  .grade-B { background: rgba(227,179,65,0.15); color: var(--warn); border: 1px solid rgba(227,179,65,0.3); }
+  .grade-C { background: rgba(247,129,102,0.15); color: var(--accent3); border: 1px solid rgba(247,129,102,0.3); }
+  .score-bars { display: flex; flex-direction: column; gap: 12px; }
+  .sb-row { display: grid; grid-template-columns: 140px 1fr 32px; gap: 10px; align-items: center; }
+  .sb-label { font-size: 12px; color: var(--text2); }
+  .sb-track { height: 4px; background: var(--bg4); }
+  .sb-fill { height: 100%; background: var(--accent); transition: width 1s cubic-bezier(.4,0,.2,1); }
+  .sb-val { font-size: 12px; color: var(--text); text-align: right; }
+
+  /* Lang */
+  .lang-bar { display: flex; height: 8px; gap: 2px; margin-bottom: 16px; overflow: hidden; }
+  .lb-seg { height: 100%; }
+  .lang-list { display: flex; flex-direction: column; gap: 8px; }
+  .lang-row { display: flex; align-items: center; gap: 10px; }
+  .lang-dot2 { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .lang-name { font-size: 13px; color: var(--text); flex: 1; }
+  .lang-pct2 { font-size: 12px; color: var(--text3); }
+  .lang-bar2-track { flex: 1; height: 3px; background: var(--bg4); }
+  .lang-bar2-fill { height: 100%; transition: width 0.8s; }
+
+  /* Activity */
+  .act-grid { display: grid; grid-template-columns: repeat(26, 1fr); gap: 3px; }
+  .act-cell { aspect-ratio: 1; border-radius: 1px; }
+  .act-legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11px; color: var(--text3); justify-content: flex-end; }
+  .act-leg { width: 12px; height: 12px; border-radius: 1px; }
+
+  /* Repos */
+  .repos-full { margin-bottom: 16px; }
+  .repo-card {
+    border: 1px solid var(--border); padding: 18px 20px; margin-bottom: 8px;
+    background: var(--bg3); transition: border-color 0.2s;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  }
+  .repo-card:hover { border-color: var(--border2); }
+  .r-name { font-size: 14px; font-weight: 500; color: var(--accent2); text-decoration: none; }
+  .r-name:hover { text-decoration: underline; }
+  .r-desc { font-size: 12px; color: var(--text2); margin-top: 4px; }
+  .r-meta { display: flex; gap: 14px; margin-top: 10px; }
+  .r-meta span { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 4px; }
+  .r-badge { font-size: 10px; padding: 2px 8px; border: 1px solid var(--border2); color: var(--text2); margin-left: 4px; }
+  .r-score { text-align: right; flex-shrink: 0; }
+  .r-score-num { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+  .r-score-label { font-size: 10px; color: var(--text3); letter-spacing: 0.06em; }
+
+  /* Resume */
+  .resume-grid { display: flex; flex-direction: column; gap: 10px; }
+  .tip {
+    display: flex; gap: 14px; padding: 16px 18px;
+    background: var(--bg4); border-left: 3px solid transparent;
+    transition: border-color 0.2s;
+  }
+  .tip:hover { border-color: var(--accent); }
+  .tip-icon { font-size: 16px; flex-shrink: 0; }
+  .tip-text { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .tip-text strong { color: var(--text); font-weight: 500; }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 60px;
+    display: flex; justify-content: space-between; align-items: center;
+    position: relative; z-index: 1;
+  }
+  .footer-logo { font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--text2); }
+  .footer-logo span { color: var(--accent); }
+  footer p { font-size: 12px; color: var(--text3); }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeLeft { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+
+  .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.6s, transform 0.6s; }
+  .reveal.visible { opacity: 1; transform: none; }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    nav { padding: 16px 24px; }
+    .nav-links { display: none; }
+    #hero { padding: 100px 24px 60px; }
+    .hero-stats { display: none; }
+    #features { padding: 60px 24px; }
+    .features-grid { grid-template-columns: 1fr; }
+    #analyzer { padding: 40px 24px 80px; }
+    .analyzer-wrap { padding: 24px; }
+    .metrics-row { grid-template-columns: 1fr 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    footer { padding: 24px; flex-direction: column; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+
+<!-- NAV -->
+<nav id="mainNav">
+  <a class="nav-logo" href="#">Git<span>Lens</span></a>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#analyzer">Analyze</a>
+    <a href="https://github.com" target="_blank">GitHub</a>
+    <button class="nav-btn" onclick="document.getElementById('analyzer').scrollIntoView({behavior:'smooth'})">Try now →</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="grid-bg"></div>
+  <div class="glow-orb orb1"></div>
+  <div class="glow-orb orb2"></div>
+
+  <div class="hero-tag">github portfolio intelligence</div>
+  <h1 class="hero-title">
+    Analyze.<br>
+    <span class="line2">Score.</span><br>
+    <span class="line3">Impress.</span>
+  </h1>
+  <p class="hero-sub">
+    Deep-dive any GitHub profile. Detect tech stacks, score project quality,
+    uncover activity patterns, and get actionable resume advice — in seconds.
+  </p>
+
+  <div class="hero-search">
+    <div class="hero-prefix">github.com/</div>
+    <input class="hero-input" id="heroInput" type="text" placeholder="username" />
+    <button class="hero-go" onclick="analyzeFromHero()">Analyze →</button>
+  </div>
+  <div class="hero-samples">
+    <span style="font-size:11px;color:var(--text3);letter-spacing:0.08em;align-self:center">try:</span>
+    <button class="sample-btn" onclick="fillSample('torvalds')">torvalds</button>
+    <button class="sample-btn" onclick="fillSample('gaearon')">gaearon</button>
+    <button class="sample-btn" onclick="fillSample('sindresorhus')">sindresorhus</button>
+    <button class="sample-btn" onclick="fillSample('tj')">tj</button>
+  </div>
+
+  <div class="terminal">
+    <div class="term-bar">
+      <div class="term-dot" style="background:#ff5f57"></div>
+      <div class="term-dot" style="background:#febc2e"></div>
+      <div class="term-dot" style="background:#28c840"></div>
+      <span class="term-title">gitlens — analyze</span>
+    </div>
+    <div class="term-body">
+      <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd"> gitlens analyze torvalds</span></div>
+      <div class="term-out">⠿ Fetching profile... <span class="term-good">done</span></div>
+      <div class="term-out">⠿ Loading 112 repositories... <span class="term-good">done</span></div>
+      <div class="term-out">⠿ Detecting tech stack... <span class="term-good">done</span></div>
+      <div class="term-out" style="margin-top:8px">
+        <span class="term-key">name</span>: <span class="term-val">Linus Torvalds</span> &nbsp;
+        <span class="term-key">score</span>: <span class="term-good">91/100</span>
+      </div>
+      <div class="term-out"><span class="term-key">stack</span>: <span class="term-val">C, Shell, Python, Perl</span></div>
+      <div class="term-out"><span class="term-key">stars</span>: <span class="term-good">★ 192,043</span></div>
+      <div class="term-line" style="margin-top:8px"><span class="term-prompt">$</span><span class="term-cursor"></span></div>
+    </div>
+  </div>
+
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="n">100M+</div><div class="l">GITHUB USERS</div></div>
+    <div class="hero-stat"><div class="n">6</div><div class="l">QUALITY METRICS</div></div>
+    <div class="hero-stat"><div class="n">30+</div><div class="l">LANGUAGES DETECTED</div></div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="section-label">what we analyze</div>
+  <h2 class="section-title">Everything a recruiter<br><em>actually looks at</em></h2>
+  <div class="features-grid reveal">
+    <div class="feature">
+      <div class="feature-line"></div>
+      <div class="feature-num">01</div>
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></div>
+      <h3>Profile Intelligence</h3>
+      <p>Deep analysis of follower ratios, bio completeness, location, and social signals that recruiters check first.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-line"></div>
+      <div class="feature-num">02</div>
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      <h3>Activity Heatmap</h3>
+      <p>42-week push activity visualized. Spot active streaks, gaps, and consistency patterns at a glance.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-line"></div>
+      <div class="feature-num">03</div>
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+      <h3>Tech Stack Detection</h3>
+      <p>Byte-level language analysis across all repos — not just labels. Real percentages, real expertise.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-line"></div>
+      <div class="feature-num">04</div>
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+      <h3>Quality Scoring</h3>
+      <p>Six-dimension portfolio score: docs, topics, stars, completeness, diversity, and activity level.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-line"></div>
+      <div class="feature-num">05</div>
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+      <h3>Resume Suggestions</h3>
+      <p>Personalized, data-driven tips to make your profile stand out. Tailored to your specific gaps.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-line"></div>
+      <div class="feature-num">06</div>
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
+      <h3>Project Rankings</h3>
+      <p>Per-repo quality scores based on stars, forks, topics, descriptions, and community engagement.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ANALYZER -->
+<section id="analyzer">
+  <div class="section-label">live analyzer</div>
+  <h2 class="section-title reveal">Try it <em>right now</em></h2>
+
+  <div class="analyzer-wrap reveal">
+    <div class="analyzer-header">
+      <div class="input-row">
+        <div class="input-prefix">github.com/</div>
+        <input id="mainInput" type="text" placeholder="enter any github username…" />
+        <button id="analyzeBtn" onclick="analyze()">Run analysis →</button>
+      </div>
+      <div class="token-row">
+        <span class="token-label">TOKEN (optional):</span>
+        <input id="tokenInput" type="password" placeholder="ghp_xxxx — avoids rate limits (not stored)" />
+      </div>
+    </div>
+
+    <div id="errorBox" style="display:none" class="error-msg"></div>
+
+    <div id="loadingBox" class="loading-bar">
+      <div class="lb-label" id="loadMsg">Initializing…</div>
+      <div class="lb-track"><div class="lb-fill" id="lbFill"></div><div class="lb-scanner"></div></div>
+    </div>
+
+    <div id="results"></div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div>
+    <div class="footer-logo">Git<span>Lens</span></div>
+    <p style="margin-top:6px">Built with GitHub public API. Zero data stored.</p>
+  </div>
+  <p>Made for students & recruiters · 2025</p>
+</footer>
+
+<script>
+/* ── CURSOR ── */
+const cur = document.getElementById('cursor');
+document.addEventListener('mousemove', e => { cur.style.left = e.clientX-6+'px'; cur.style.top = e.clientY-6+'px'; });
+document.querySelectorAll('a,button,input').forEach(el => {
+  el.addEventListener('mouseenter', () => cur.classList.add('big'));
+  el.addEventListener('mouseleave', () => cur.classList.remove('big'));
+});
+
+/* ── NAV SCROLL ── */
+const nav = document.getElementById('mainNav');
+window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 40));
+
+/* ── REVEAL ── */
+const obs = new IntersectionObserver(entries => entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); }), { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+/* ── HERO ── */
+document.getElementById('heroInput').addEventListener('keydown', e => { if(e.key==='Enter') analyzeFromHero(); });
+document.getElementById('mainInput').addEventListener('keydown', e => { if(e.key==='Enter') analyze(); });
+
+function fillSample(u) {
+  document.getElementById('heroInput').value = u;
+  document.getElementById('heroInput').focus();
+}
+function analyzeFromHero() {
+  const u = document.getElementById('heroInput').value.trim();
+  if(!u) return;
+  document.getElementById('mainInput').value = u;
+  document.getElementById('analyzer').scrollIntoView({ behavior: 'smooth' });
+  setTimeout(analyze, 600);
+}
+
+/* ── GITHUB API ── */
+const LANG_COLORS = {
+  JavaScript:'#f1e05a',TypeScript:'#3178c6',Python:'#3572A5',Java:'#b07219',
+  'C++':'#f34b7d',C:'#555555','C#':'#178600',Go:'#00ADD8',Rust:'#dea584',
+  Ruby:'#701516',PHP:'#4F5D95',Swift:'#ffac45',Kotlin:'#A97BFF',Dart:'#00B4AB',
+  HTML:'#e34c26',CSS:'#563d7c',Shell:'#89e051',Scala:'#c22d40',R:'#198CE7',
+  Vue:'#42b883','Jupyter Notebook':'#DA5B0B',MATLAB:'#e16737',Lua:'#000080',
+  Elixir:'#6e4a7e',Haskell:'#5e5086',Clojure:'#db5855','Objective-C':'#438eff',
+  Perl:'#0298c3',Vim script:'#199f4b'
+};
+
+function ghHeaders() {
+  const tok = document.getElementById('tokenInput').value.trim();
+  const h = { 'Accept': 'application/vnd.github.v3+json' };
+  if(tok) h['Authorization'] = `token ${tok}`;
+  return h;
+}
+async function ghFetch(url) {
+  const r = await fetch(url, { headers: ghHeaders() });
+  if(!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+function setLoad(msg, pct) {
+  document.getElementById('loadingBox').classList.add('active');
+  document.getElementById('loadMsg').textContent = msg;
+  document.getElementById('lbFill').style.width = pct+'%';
+}
+function hideLoad() { document.getElementById('loadingBox').classList.remove('active'); }
+function showErr(msg) { const b=document.getElementById('errorBox'); b.textContent='⚠ '+msg; b.style.display='block'; }
+function hideErr() { document.getElementById('errorBox').style.display='none'; }
+
+async function analyze() {
+  const u = document.getElementById('mainInput').value.trim();
+  if(!u) return;
+  hideErr();
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('analyzeBtn').disabled = true;
+
+  try {
+    setLoad('Fetching profile…', 10);
+    const user = await ghFetch(`https://api.github.com/users/${u}`);
+    setLoad('Loading repositories…', 30);
+    const repos = await ghFetch(`https://api.github.com/users/${u}/repos?per_page=100&sort=pushed`);
+    setLoad('Analyzing tech stack…', 55);
+    const langMap = {};
+    await Promise.all(repos.slice(0,30).map(async r => {
+      if(r.fork) return;
+      try { const l = await ghFetch(r.languages_url); for(const [k,v] of Object.entries(l)) langMap[k]=(langMap[k]||0)+v; } catch{}
+    }));
+    setLoad('Computing scores…', 85);
+    await new Promise(r => setTimeout(r, 400));
+    hideLoad();
+    renderResults(user, repos, langMap);
+  } catch(e) {
+    hideLoad();
+    showErr(e.message.includes('404') ? `User "${u}" not found on GitHub.` : `API error: ${e.message}`);
+  } finally {
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
+
+/* ── SCORING ── */
+function calcScore(repos, langMap) {
+  const nf = repos.filter(r=>!r.fork);
+  const withDesc = nf.filter(r=>r.description&&r.description.length>5).length;
+  const withTopics = nf.filter(r=>r.topics&&r.topics.length>0).length;
+  const withSize = nf.filter(r=>r.size>10).length;
+  const stars = nf.reduce((s,r)=>s+r.stargazers_count,0);
+  const langs = Object.keys(langMap).length;
+  const descS = Math.min(100, (withDesc/Math.max(nf.length,1))*100);
+  const topicS = Math.min(100, (withTopics/Math.max(nf.length,1))*100);
+  const readS = Math.min(100, (withSize/Math.max(nf.length,1))*100);
+  const starS = Math.min(100, stars*1.5);
+  const langS = Math.min(100, langs*12);
+  const actS = Math.min(100, nf.length*3);
+  const total = Math.round(descS*.2+topicS*.1+readS*.2+starS*.2+langS*.15+actS*.15);
+  return { total, descS:Math.round(descS), topicS:Math.round(topicS), readS:Math.round(readS), starS:Math.round(starS), langS:Math.round(langS), actS:Math.round(actS) };
+}
+function gradeFor(n) { return n>=80?'S':n>=65?'A':n>=45?'B':'C'; }
+function gradeLabel(n) { return n>=80?'Excellent':n>=65?'Good':n>=45?'Fair':'Needs Work'; }
+function actCells(repos) {
+  const now = new Date(), cells = [];
+  for(let i=25;i>=0;i--) {
+    const d = new Date(now); d.setDate(d.getDate()-i*14);
+    const w = repos.filter(r => Math.abs(new Date(r.pushed_at)-d)<14*24*3600*1000).length;
+    cells.push(Math.min(w,4));
+  }
+  return cells;
+}
+function repoScore(r) {
+  let s = 0;
+  if(r.description&&r.description.length>5) s+=25;
+  if(r.topics&&r.topics.length>0) s+=20;
+  s += Math.min(30, r.stargazers_count*3);
+  s += Math.min(15, r.forks_count*3);
+  if(r.size>10) s+=10;
+  return Math.min(100, s);
+}
+function resumeTips(user, repos, langMap, score) {
+  const nf = repos.filter(r=>!r.fork);
+  const tips = [];
+  const tl = Object.entries(langMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>x[0]);
+  const top = nf.sort((a,b)=>b.stargazers_count-a.stargazers_count)[0];
+  const noDesc = nf.filter(r=>!r.description||r.description.length<5).length;
+  if(!user.bio) tips.push({icon:'👤',text:'<strong>Add a bio</strong> to your GitHub profile — it\'s the first thing recruiters read. Mention your role, specialization, and what you\'re building.'});
+  if(!user.blog) tips.push({icon:'🔗',text:'<strong>Link your portfolio or LinkedIn</strong> in the profile website field for one-click recruiter access.'});
+  if(noDesc>3) tips.push({icon:'📝',text:`<strong>${noDesc} repos lack descriptions.</strong> Even a single sentence per project signals professionalism and improves discoverability.`});
+  if(tl.length) tips.push({icon:'⚙️',text:`<strong>Feature your stack on your resume:</strong> ${tl.join(', ')}. Match keywords to job descriptions for better ATS parsing.`});
+  if(top&&top.stargazers_count>0) tips.push({icon:'⭐',text:`<strong>Lead with "${top.name}"</strong> (${top.stargazers_count} stars) in your resume's Projects section — it's social proof of real-world impact.`});
+  tips.push({icon:'📌',text:'<strong>Pin 4–6 repos</strong> on your GitHub profile. A curated showcase tells your story faster than a list of 80 repos.'});
+  tips.push({icon:'📖',text:'<strong>Write a "What, Why, How" README</strong> for each key project: what it does, why you built it, and how to run it.'});
+  if(score.total<60) tips.push({icon:'🚀',text:'<strong>Add topics/tags</strong> to your repos. Keyword-tagged repos rank higher in GitHub search and signal organized thinking.'});
+  return tips.slice(0,6);
+}
+
+/* ── RENDER ── */
+function renderResults(user, repos, langMap) {
+  const nf = repos.filter(r=>!r.fork);
+  const stars = nf.reduce((s,r)=>s+r.stargazers_count,0);
+  const score = calcScore(repos, langMap);
+  const grade = gradeFor(score.total);
+  const cells = actCells(repos);
+  const tl = Object.entries(langMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const tlTotal = Object.values(langMap).reduce((a,b)=>a+b,0);
+  const pct = l => tlTotal>0?Math.round(l[1]/tlTotal*100):0;
+  const topRepos = [...nf].sort((a,b)=>repoScore(b)-repoScore(a)).slice(0,6);
+  const tips = resumeTips(user, repos, langMap, score);
+
+  const actColor = n => ['#161b22','#0e4429','#006d32','#26a641','#39d353'][n];
+
+  const html = `
+  <div class="profile-block">
+    <img class="p-avatar" src="${user.avatar_url}" alt="${user.login}"/>
+    <div>
+      <div class="p-name">${user.name||user.login}</div>
+      <div class="p-login">@${user.login}${user.company?' · '+user.company:''}</div>
+      ${user.bio?`<div class="p-bio">${user.bio}</div>`:''}
+      <div class="p-meta">
+        <span><strong>${user.followers}</strong> followers</span>
+        <span><strong>${user.following}</strong> following</span>
+        <span><strong>${user.public_repos}</strong> public repos</span>
+        ${user.location?`<span>📍 ${user.location}</span>`:''}
+        <a class="p-link" href="https://github.com/${user.login}" target="_blank">View on GitHub ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="metrics-row">
+    <div class="met m1"><div class="met-val">${nf.length}</div><div class="met-label">Original repos</div></div>
+    <div class="met m2"><div class="met-val">${stars.toLocaleString()}</div><div class="met-label">Stars earned</div></div>
+    <div class="met m3"><div class="met-val">${Object.keys(langMap).length}</div><div class="met-label">Languages</div></div>
+    <div class="met m4"><div class="met-val">${repos.length-nf.length}</div><div class="met-label">Forks</div></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">// portfolio score</div>
+      <div class="score-display">
+        <span class="score-num" style="color:${score.total>=80?'var(--accent)':score.total>=65?'var(--accent2)':score.total>=45?'var(--warn)':'var(--accent3)'}">${score.total}</span>
+        <span class="score-denom">/ 100</span>
+        <span class="score-grade grade-${grade}">${gradeLabel(score.total)}</span>
+      </div>
+      <div class="score-bars">
+        ${[['Documentation',score.descS],['Topics & Tags',score.topicS],['Completeness',score.readS],['Community Stars',score.starS],['Lang Diversity',score.langS],['Activity',score.actS]].map(([l,v])=>`
+        <div class="sb-row">
+          <span class="sb-label">${l}</span>
+          <div class="sb-track"><div class="sb-fill" style="width:${v}%"></div></div>
+          <span class="sb-val">${v}</span>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">// tech stack</div>
+      <div class="lang-bar">
+        ${tl.map(l=>`<div class="lb-seg" style="flex:${pct(l)};background:${LANG_COLORS[l[0]]||'#444'}"></div>`).join('')}
+      </div>
+      <div class="lang-list">
+        ${tl.map(l=>`
+        <div class="lang-row">
+          <div class="lang-dot2" style="background:${LANG_COLORS[l[0]]||'#444'}"></div>
+          <span class="lang-name">${l[0]}</span>
+          <div class="lang-bar2-track"><div class="lang-bar2-fill" style="width:${pct(l)}%;background:${LANG_COLORS[l[0]]||'#444'}"></div></div>
+          <span class="lang-pct2">${pct(l)}%</span>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-title">// coding activity — last 26 fortnights</div>
+    <div class="act-grid">
+      ${cells.map(v=>`<div class="act-cell" style="background:${actColor(v)}"></div>`).join('')}
+    </div>
+    <div class="act-legend">
+      less <div class="act-leg" style="background:#161b22"></div>
+      <div class="act-leg" style="background:#0e4429"></div>
+      <div class="act-leg" style="background:#006d32"></div>
+      <div class="act-leg" style="background:#26a641"></div>
+      <div class="act-leg" style="background:#39d353"></div> more
+    </div>
+  </div>
+
+  <div class="panel repos-full" style="margin-bottom:16px">
+    <div class="panel-title">// top projects by quality score</div>
+    ${topRepos.map(r=>{
+      const rs = repoScore(r);
+      const rc = rs>=70?'var(--accent)':rs>=50?'var(--warn)':'var(--text3)';
+      return `
+    <div class="repo-card">
+      <div>
+        <a class="r-name" href="${r.html_url}" target="_blank">${r.name}</a>
+        <div class="r-desc">${r.description||'<em style="color:var(--text3)">no description</em>'}</div>
+        <div class="r-meta">
+          <span>★ ${r.stargazers_count}</span>
+          <span>⑂ ${r.forks_count}</span>
+          ${r.language?`<span>${r.language}</span>`:''}
+          ${r.topics&&r.topics.length?r.topics.slice(0,3).map(t=>`<span class="r-badge">${t}</span>`).join(''):''}
+        </div>
+      </div>
+      <div class="r-score">
+        <div class="r-score-num" style="color:${rc}">${rs}</div>
+        <div class="r-score-label">QUALITY</div>
+      </div>
+    </div>`;}).join('')}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">// resume recommendations</div>
+    <div class="resume-grid">
+      ${tips.map(t=>`<div class="tip"><span class="tip-icon">${t.icon}</span><div class="tip-text">${t.text}</div></div>`).join('')}
+    </div>
+  </div>
+  `;
+
+  const el = document.getElementById('results');
+  el.innerHTML = html; el.style.display = 'block';
+}
+</script>
+</body>
+</html>
